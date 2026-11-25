@@ -29,14 +29,21 @@ export async function apiRequest<T>(
     return undefined as T;
   }
 
-  const body = (await response.json()) as {
-    ok: boolean;
-    data?: T;
-    error?: { message: string };
-  };
-  if (!response.ok || !body.ok) {
+  const httpError = `HTTP ${response.status}`;
+  let body: { ok: boolean; data?: T; error?: { message: string } } | null;
+  try {
+    body = await response.json();
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    const responseType = response.headers.get("content-type");
+    const format = responseType?.includes("text/html")
+      ? "HTML"
+      : "非 JSON 内容";
+    throw new ApiError(`接口返回了${format}（${httpError}）`, response.status);
+  }
+  if (!response.ok || body?.ok !== true) {
     throw new ApiError(
-      body.error?.message ?? `Request failed with HTTP ${response.status}`,
+      body?.error?.message ?? `Request failed with ${httpError}`,
       response.status,
     );
   }

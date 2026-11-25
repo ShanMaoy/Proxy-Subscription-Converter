@@ -136,8 +136,16 @@ export async function postToPublicHttps(
         defaultResolveHost,
         signal,
       );
+      const pinnedLookup = createPinnedLookup(hostname, addresses);
       dispatcher = new Agent({
-        connect: { lookup: createPinnedLookup(hostname, addresses) },
+        // Give each verified address time to connect before trying another family.
+        autoSelectFamily: true,
+        autoSelectFamilyAttemptTimeout: 1_500,
+        connect: {
+          lookup(host, options, callback) {
+            setImmediate(() => pinnedLookup(host, options, callback));
+          },
+        },
       });
     }
     const init = {
