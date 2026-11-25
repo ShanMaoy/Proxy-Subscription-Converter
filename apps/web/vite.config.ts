@@ -23,6 +23,7 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       proxy: {
         "/api": apiProxyTarget,
+        "/mcp": apiProxyTarget,
         "/health": apiProxyTarget,
         "/sub": apiProxyTarget,
       },

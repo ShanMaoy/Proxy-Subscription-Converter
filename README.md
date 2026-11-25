@@ -109,13 +109,75 @@ http://localhost:8080
 
 上传或粘贴本地 YAML 后会直接解析并显示节点数量。远程刷新、自动更新和最近刷新时间对本地来源显示为“不适用”。
 
-## 规则 AI 助手
+## MCP 管理
 
-在规则页右下角用自然语言描述问题，例如“最近访问虎牙有点卡，感觉走了代理”。助手会核对当前草稿里可能命中的规则和策略，也可以提出增加、修改、移动或删除规则的建议。审阅后选择“同意并应用到草稿”，再点击页面上的“保存规则”，改动才会生效。
+Substation 提供远程 Streamable HTTP 和本地 stdio 两种 MCP 接入方式，使用同一份 SQLite 数据管理网站配置。
 
-在“系统维护”填写 OpenAI 兼容的 HTTPS API 地址、模型名称和 API Key。模型需支持 Chat Completions 的 JSON 输出。API Key 由服务端用 `SESSION_SECRET` 加密后存入 SQLite，配置 JSON 备份不含 AI 设置。点击“向 AI 提问”时，问题和当前分流规则会发给所选服务；订阅源、节点、规则备注和输出令牌不包含在发送的数据中。
+| 能力 | MCP 工具 |
+| --- | --- |
+| 查找输出、订阅源及生成状态 | `list_output_profiles`、`list_subscription_sources`、`check_output` |
+| 查看已保存的规则、策略组和规则集 | `list_rules`、`list_proxy_groups`、`list_rule_providers` |
+| 核对域名或 IP 命中情况 | `check_rule_coverage`、`geo_dataset_status`、`sync_geo_datasets` |
+| 预览并应用配置修改 | `plan_configuration`、`apply_configuration` |
 
-覆盖核对无需配置 AI。GeoIP 和 GeoSite 使用 [MetaCubeX 规则数据库](https://github.com/MetaCubeX/meta-rules-dat)，常用分类与已查询过的分类会在服务运行时每天更新。也可以在“系统维护”点击“立即同步”。GeoIP 对域名使用服务端 DNS，覆盖列表供核对，实际出站以客户端连接日志为准。
+### 通过网站连接
+
+在转换器后台打开“系统维护 → MCP 接入”，生成 API Key 并复制端点和客户端配置。客户端使用 Streamable HTTP，按配置发送 `Authorization: Bearer <API Key>`。正式部署使用 HTTPS，端点默认为网站域名下的 `/mcp`。
+
+新密钥仅在生成后显示，服务端只保存摘要。该密钥默认允许修改配置。轮换或撤销会立即让旧密钥和现有 MCP 会话失效。客户端应为 `apply_configuration` 启用人工审批。
+
+### 本地 stdio 连接
+
+运行 `corepack pnpm install --frozen-lockfile` 安装依赖。把以下配置添加到 MCP 客户端，按实际情况调整项目路径。示例使用网站本地开发数据库，`DATABASE_URL` 可指定同一个 SQLite 文件。stdio 默认提供修改权限。需要只读会话时，在启动参数末尾添加 `--read-only`。
+
+```json
+{
+  "mcpServers": {
+    "substation": {
+      "command": "node",
+      "args": [
+        "--env-file-if-exists=F:/url/url/.env",
+        "--import",
+        "file:///F:/url/url/apps/server/node_modules/tsx/dist/loader.mjs",
+        "F:/url/url/apps/server/src/mcp/index.ts"
+      ]
+    }
+  }
+}
+```
+
+### 连接 Docker 部署
+
+在运行应用容器的电脑上，可将 MCP 客户端的启动命令设为 `docker exec -i <应用容器名> node --import tsx src/mcp/index.ts`。远程部署可把命令换成 `ssh`，参数设为 `-T`、SSH 主机名和上面的 Docker 命令。应用镜像需要包含本节的 MCP 实现。容器内的 MCP 进程沿用应用的数据卷，无需新增 HTTP 端口。写入模式授予 MCP 客户端修改配置的权限，应为客户端的 `apply_configuration` 工具启用人工审批。
+
+### 预览和应用修改
+
+先用 `list_output_profiles` 找到输出 ID，再用 `list_rules` 查看规则 ID 和顺序。预览工具接收一批操作：
+
+- `add_rule`、`update_rule`、`remove_rule`、`move_rule`、`reorder_rules` 管理规则。省略 `profileId` 修改全局规则，指定输出则修改该输出的独立规则。新增规则默认排在启用的 `MATCH` 前。
+- `set_proxy_group`、`remove_proxy_group` 管理 Clash/Mihomo 输出的自定义策略组，支持选择、延迟测试、故障切换和负载均衡。
+- `set_rule_provider`、`remove_rule_provider` 管理同一输出的 HTTP、文件或内联规则集。可在同一批次添加规则集及引用它的 `RULE-SET` 规则。
+
+例如，用以下参数预览把虎牙域名设为直连：
+
+```json
+{
+  "operations": [
+    {
+      "op": "add_rule",
+      "rule": {
+        "ruleType": "DOMAIN-SUFFIX",
+        "value": "huya.com",
+        "policy": "DIRECT"
+      }
+    }
+  ]
+}
+```
+
+在客户端审阅变更后，将返回的 `planId` 传给 `apply_configuration`。同一批改动原子保存。计划在 5 分钟后过期；若期间有其他操作修改了同一份配置，需重新预览。
+
+GeoIP 和 GeoSite 仍使用 [MetaCubeX 规则数据库](https://github.com/MetaCubeX/meta-rules-dat)，应用后台定期更新。规则核对在需要时使用服务端 DNS，实际出站以客户端连接日志为准。
 
 ## 部署到服务器
 

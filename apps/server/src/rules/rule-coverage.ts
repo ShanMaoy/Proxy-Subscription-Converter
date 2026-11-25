@@ -1,7 +1,7 @@
 import { lookup, Resolver } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
 import type { RuleCoverage, UserRule } from "@subscription-converter/shared";
-import { RuleValidationError } from "../rules/service";
+import { RuleValidationError } from "./service";
 import type { GeoDatasets } from "./geo-datasets";
 
 const geoTypes = { GEOIP: "geoip", GEOSITE: "geosite" } as const;
@@ -87,7 +87,7 @@ function matchesCidr(cidr: string, addresses: string[]) {
 export async function checkRuleCoverage(
   input: string,
   rules: UserRule[],
-  datasets: GeoDatasets,
+  datasets: Pick<GeoDatasets, "get">,
 ): Promise<RuleCoverage> {
   const target = normalizeTarget(input);
   const literalIp = isIP(target) !== 0;

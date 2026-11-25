@@ -22,7 +22,6 @@ import type { UserRule } from "@subscription-converter/shared";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { RuleModal, type RuleDraftInput } from "../components/RuleModal";
 import { PageHeader } from "../components/PageHeader";
-import { RuleAssistant } from "../components/RuleAssistant";
 import { SortableRuleRow } from "../components/SortableRuleRow";
 import { apiRequest } from "../lib/api";
 import type { ManagedOutputProfile } from "../types/output";
@@ -358,18 +357,6 @@ export function RulesPage({
           onSave={(input) => upsertDraftRule(input, editingRule)}
         />
       )}
-      <RuleAssistant
-        rules={visibleRules}
-        policies={policies}
-        ruleProviders={ruleProviders}
-        scope={
-          profileId
-            ? `独立规则草稿：${profileName ?? profileId}`
-            : "全局规则草稿"
-        }
-        busy={rules.isPending || saveRules.isPending || draggedRuleId !== null}
-        onApply={replaceDraftRules}
-      />
     </div>
   );
 }

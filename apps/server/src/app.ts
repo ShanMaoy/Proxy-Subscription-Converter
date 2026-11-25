@@ -4,13 +4,13 @@ import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyServerOptions } from "fastify";
 import { resolve } from "node:path";
 
-import { GeoDatasets } from "./assistant/geo-datasets";
-import { registerAssistantRoutes } from "./assistant/routes";
+import { GeoDatasets } from "./rules/geo-datasets";
 import { registerAuthRoutes } from "./auth/routes";
 import type { AppConfig } from "./config/env";
 import { loadConfig } from "./config/env";
 import { initializeDatabase, type DatabaseConnection } from "./db/database";
 import { registerErrorHandler } from "./http/errors";
+import { registerMcpRoutes } from "./mcp/http-routes";
 import { registerOutputRoutes } from "./output/routes";
 import { registerHealthRoutes } from "./routes/health";
 import type { RemoteFetcher } from "./remote/fetch-subscription";
@@ -103,7 +103,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     await registerOutputRoutes(app, config, operationLogs);
     await registerSystemRoutes(app, config, operationLogs);
     geoDatasets = new GeoDatasets(database);
-    registerAssistantRoutes(app, config, geoDatasets);
+    registerMcpRoutes(app, config, operationLogs, geoDatasets);
     if (config.NODE_ENV !== "test") {
       app.addHook("onReady", async () => geoDatasets?.start());
     }

@@ -88,10 +88,10 @@ export class GeoDatasets {
     return this.manualRefresh;
   }
 
-  async get(kind: Kind, category: string) {
+  async get(kind: Kind, category: string, { cachedOnly = false } = {}) {
     const dataset = { kind, category: category.trim().toLowerCase() };
     if (!/^[\w!@-]{1,80}$/.test(dataset.category)) return undefined;
-    const saved = await this.ensure(dataset);
+    const saved = cachedOnly ? this.read(dataset) : await this.ensure(dataset);
     if (!saved) return undefined;
 
     const key = this.key(dataset);

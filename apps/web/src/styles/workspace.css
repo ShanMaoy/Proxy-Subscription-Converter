@@ -563,6 +563,34 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.mcp-settings-panel {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.mcp-settings-panel > button {
+  justify-self: start;
+}
+.mcp-key-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.mcp-key-value {
+  width: 100%;
+  margin-top: 8px;
+}
+.mcp-steps {
+  margin: 0;
+  padding-inline-start: 24px;
+  line-height: 1.7;
+}
+.mcp-settings-panel pre {
+  overflow-x: auto;
+  padding: 16px;
+  border-radius: var(--radius-small);
+  background: var(--canvas);
+}
 .maintenance-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

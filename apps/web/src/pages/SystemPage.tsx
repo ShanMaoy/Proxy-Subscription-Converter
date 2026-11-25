@@ -10,7 +10,7 @@ import {
 import { useState } from "react";
 
 import { ErrorBanner } from "../components/ErrorBanner";
-import { AiSettingsPanel } from "../components/AiSettingsPanel";
+import { McpSettingsPanel } from "../components/McpSettingsPanel";
 import { PageHeader } from "../components/PageHeader";
 import { apiRequest } from "../lib/api";
 
@@ -88,7 +88,7 @@ export function SystemPage() {
         title="系统维护"
         description="导出或恢复配置，并检查最近的管理操作与远程错误。"
       />
-      <AiSettingsPanel />
+      <McpSettingsPanel />
       <ErrorBanner error={operationError} fallback="系统维护操作失败" />
       {restoreBackup.data && (
         <div className="alert success page-alert" role="status">

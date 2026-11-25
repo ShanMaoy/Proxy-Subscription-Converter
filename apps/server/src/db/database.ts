@@ -54,6 +54,12 @@ const migrations = [
       new URL("./migrations/0006_ai_and_source_metadata.sql", import.meta.url),
     ),
   },
+  {
+    id: "0007_mcp_access",
+    path: fileURLToPath(
+      new URL("./migrations/0007_mcp_access.sql", import.meta.url),
+    ),
+  },
 ] as const;
 
 export type DatabaseConnection = ReturnType<typeof createDatabase>;

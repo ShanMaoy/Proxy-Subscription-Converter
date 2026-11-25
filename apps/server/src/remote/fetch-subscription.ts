@@ -117,60 +117,6 @@ export async function readLimitedBody(
   }
 }
 
-export async function postToPublicHttps(
-  endpoint: URL,
-  headers: Record<string, string>,
-  body: string,
-) {
-  if (endpoint.protocol !== "https:") {
-    throw new RemoteFetchError("AI 接口必须使用 HTTPS");
-  }
-  const signal = AbortSignal.timeout(45_000);
-  let dispatcher: Agent | undefined;
-  try {
-    // The fixed default API origin also works with system proxies that use fake IPs.
-    // Configured third-party destinations still require validated, pinned DNS.
-    if (endpoint.href !== "https://api.openai.com/v1/chat/completions") {
-      const { hostname, addresses } = await validateUrl(
-        endpoint.href,
-        defaultResolveHost,
-        signal,
-      );
-      const pinnedLookup = createPinnedLookup(hostname, addresses);
-      dispatcher = new Agent({
-        // Give each verified address time to connect before trying another family.
-        autoSelectFamily: true,
-        autoSelectFamilyAttemptTimeout: 1_500,
-        connect: {
-          lookup(host, options, callback) {
-            setImmediate(() => pinnedLookup(host, options, callback));
-          },
-        },
-      });
-    }
-    const init = {
-      method: "POST",
-      headers,
-      body,
-      signal,
-      redirect: "error" as const,
-      dispatcher: dispatcher as unknown as RequestInit["dispatcher"],
-    };
-    const response = await fetch(endpoint, init);
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new RemoteFetchError(`AI 服务返回 HTTP ${response.status}`, 502);
-    }
-    return await readLimitedBody(response, 1024 * 1024, signal);
-  } catch (error) {
-    if (signal.aborted) throw new RemoteFetchError("AI 服务响应超时", 504);
-    if (error instanceof RemoteFetchError) throw error;
-    throw new RemoteFetchError("无法连接 AI 服务，请核对接口地址", 502);
-  } finally {
-    await dispatcher?.destroy();
-  }
-}
-
 export function parseSubscriptionUserInfo(
   value: string | null,
 ): SubscriptionUserInfo | null {
