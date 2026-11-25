@@ -1,26 +1,33 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Braces,
-  GripVertical,
-  Pencil,
-  Plus,
-  ShieldAlert,
-  Trash2,
-} from "lucide-react";
-import { Fragment, useEffect, useState, type DragEvent } from "react";
+  closestCenter,
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Braces, GripVertical, Plus, ShieldAlert } from "lucide-react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 import type { UserRule } from "@subscription-converter/shared";
 
 import { ErrorBanner } from "../components/ErrorBanner";
 import { RuleModal, type RuleDraftInput } from "../components/RuleModal";
 import { PageHeader } from "../components/PageHeader";
+import { RuleAssistant } from "../components/RuleAssistant";
+import { SortableRuleRow } from "../components/SortableRuleRow";
 import { apiRequest } from "../lib/api";
 import type { ManagedOutputProfile } from "../types/output";
 
 const defaultPolicies = ["PROXY", "AUTO", "DIRECT", "REJECT"];
-
-type DropPosition = "before" | "after";
-type DropMarker = { targetRuleId: string; position: DropPosition };
 
 export function RulesPage({
   profileId,
@@ -37,7 +44,9 @@ export function RulesPage({
   const [draftRules, setDraftRules] = useState<UserRule[]>([]);
   const [isDirty, setIsDirty] = useState(false);
   const [draggedRuleId, setDraggedRuleId] = useState<string | null>(null);
-  const [dropMarker, setDropMarker] = useState<DropMarker | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
   const rules = useQuery({
     queryKey: rulesKey,
     queryFn: () => apiRequest<UserRule[]>(rulesUrl),
@@ -66,7 +75,6 @@ export function RulesPage({
       setDraftRules(savedRules);
       setIsDirty(false);
       setDraggedRuleId(null);
-      setDropMarker(null);
       queryClient.setQueryData(rulesKey, savedRules);
       if (profileId)
         void queryClient.invalidateQueries({
@@ -167,7 +175,6 @@ export function RulesPage({
     setDraftRules(rules.data ?? []);
     setIsDirty(false);
     setDraggedRuleId(null);
-    setDropMarker(null);
     saveRules.reset();
   };
 
@@ -175,73 +182,14 @@ export function RulesPage({
     saveRules.mutate(normalizeSortOrder(visibleRules));
   };
 
-  const dropRule = (targetRuleId: string, position: DropPosition) => {
-    if (!draggedRuleId || draggedRuleId === targetRuleId) return;
-    const draggedRule = visibleRules.find((rule) => rule.id === draggedRuleId);
-    if (!draggedRule) return;
-    const withoutDragged = visibleRules.filter(
-      (rule) => rule.id !== draggedRuleId,
-    );
-    const targetIndex = withoutDragged.findIndex(
-      (rule) => rule.id === targetRuleId,
-    );
-    if (targetIndex < 0) return;
-    const insertIndex = position === "after" ? targetIndex + 1 : targetIndex;
-    const nextRules = [...withoutDragged];
-    nextRules.splice(insertIndex, 0, draggedRule);
-    replaceDraftRules(nextRules);
+  const activeRule = visibleRules.find((rule) => rule.id === draggedRuleId);
+  const finishDrag = ({ active, over }: DragEndEvent) => {
     setDraggedRuleId(null);
-    setDropMarker(null);
-  };
-
-  const startDrag = (event: DragEvent<HTMLElement>, rule: UserRule) => {
-    setDraggedRuleId(rule.id);
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", rule.id);
-  };
-
-  const updateDropMarker = (
-    event: DragEvent<HTMLElement>,
-    targetRuleId: string,
-  ) => {
-    event.preventDefault();
-    if (!draggedRuleId || draggedRuleId === targetRuleId) return;
-    event.dataTransfer.dropEffect = "move";
-    setDropMarker({
-      targetRuleId,
-      position: getDropPosition(event),
-    });
-  };
-
-  const renderDropPlaceholder = (
-    targetRuleId: string,
-    position: DropPosition,
-  ) => {
-    if (
-      !draggedRuleId ||
-      draggedRuleId === targetRuleId ||
-      dropMarker?.targetRuleId !== targetRuleId ||
-      dropMarker.position !== position
-    ) {
-      return null;
-    }
-    return (
-      <div
-        aria-hidden="true"
-        className="rule-drop-placeholder"
-        onDragOver={(event) => {
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "move";
-          setDropMarker({ targetRuleId, position });
-        }}
-        onDrop={(event) => {
-          event.preventDefault();
-          dropRule(targetRuleId, position);
-        }}
-      >
-        松开后移动到这里
-      </div>
-    );
+    if (!over || active.id === over.id) return;
+    const from = visibleRules.findIndex((rule) => rule.id === active.id);
+    const to = visibleRules.findIndex((rule) => rule.id === over.id);
+    if (from >= 0 && to >= 0)
+      replaceDraftRules(arrayMove(visibleRules, from, to));
   };
 
   return (
@@ -322,84 +270,67 @@ export function RulesPage({
         {rules.isPending ? (
           <div className="list-empty">正在读取规则...</div>
         ) : visibleRules.length ? (
-          <div className="rules-list">
-            {visibleRules.map((rule, index) => (
-              <Fragment key={rule.id}>
-                {renderDropPlaceholder(rule.id, "before")}
-                <article
-                  className={`rule-row ${
-                    draggedRuleId === rule.id ? "dragging" : ""
-                  }`}
-                  draggable={!saveRules.isPending}
-                  onDragEnd={() => {
-                    setDraggedRuleId(null);
-                    setDropMarker(null);
-                  }}
-                  onDragOver={(event) => updateDropMarker(event, rule.id)}
-                  onDragStart={(event) => startDrag(event, rule)}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    const position =
-                      dropMarker?.targetRuleId === rule.id
-                        ? dropMarker.position
-                        : getDropPosition(event);
-                    dropRule(rule.id, position);
-                  }}
-                >
-                  <div className="rule-order">
-                    <span className="rule-drag-handle" aria-hidden="true">
-                      <GripVertical size={15} />
-                    </span>
-                    <span>{String(index + 1).padStart(2, "0")}</span>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            autoScroll={{ threshold: { x: 0, y: 0.18 }, acceleration: 12 }}
+            onDragStart={({ active }) => setDraggedRuleId(String(active.id))}
+            onDragEnd={finishDrag}
+            onDragCancel={() => setDraggedRuleId(null)}
+            accessibility={{
+              screenReaderInstructions: {
+                draggable: "用鼠标或触屏拖动排序，键盘直接按上下方向键移动。",
+              },
+            }}
+          >
+            <SortableContext
+              items={visibleRules.map((rule) => rule.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="rules-list">
+                {visibleRules.map((rule, index) => (
+                  <SortableRuleRow
+                    key={rule.id}
+                    rule={rule}
+                    index={index}
+                    disabled={saveRules.isPending}
+                    onEdit={() => setEditingRule(rule)}
+                    onToggle={() => toggleDraftRule(rule)}
+                    onDelete={() => deleteDraftRule(rule)}
+                    onMove={(offset) => {
+                      const to = index + offset;
+                      if (
+                        !draggedRuleId &&
+                        to >= 0 &&
+                        to < visibleRules.length
+                      ) {
+                        replaceDraftRules(arrayMove(visibleRules, index, to));
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+            {createPortal(
+              <DragOverlay
+                dropAnimation={
+                  window.matchMedia("(prefers-reduced-motion: reduce)").matches
+                    ? null
+                    : { duration: 190, easing: "cubic-bezier(.2,.75,.25,1)" }
+                }
+              >
+                {activeRule && (
+                  <div className="rule-drag-preview" aria-hidden="true">
+                    <GripVertical size={18} />
+                    <span className="rule-type">{activeRule.ruleType}</span>
+                    <strong>{activeRule.value ?? "所有剩余流量"}</strong>
+                    <span className="policy-chip">{activeRule.policy}</span>
                   </div>
-                  <span className="rule-type">{rule.ruleType}</span>
-                  <div className="rule-value">
-                    <strong>{rule.value ?? "所有剩余流量"}</strong>
-                    <small>
-                      {rule.noResolve ? "不触发 DNS 解析 · " : ""}
-                      {rule.note || "无备注"}
-                    </small>
-                  </div>
-                  <span className={`policy-chip ${rule.policy.toLowerCase()}`}>
-                    {rule.policy}
-                  </span>
-                  <div className="row-actions">
-                    <button
-                      type="button"
-                      className="icon-action"
-                      aria-label={`编辑 ${rule.ruleType} ${
-                        rule.value ?? rule.policy
-                      }`}
-                      onClick={() => setEditingRule(rule)}
-                    >
-                      <Pencil size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      className={`toggle ${rule.enabled ? "on" : ""}`}
-                      aria-label={`${rule.enabled ? "禁用" : "启用"} ${
-                        rule.ruleType
-                      } ${rule.value ?? rule.policy}`}
-                      onClick={() => toggleDraftRule(rule)}
-                    >
-                      <span />
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-action danger"
-                      aria-label={`删除 ${rule.ruleType} ${
-                        rule.value ?? rule.policy
-                      }`}
-                      onClick={() => deleteDraftRule(rule)}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </article>
-                {renderDropPlaceholder(rule.id, "after")}
-              </Fragment>
-            ))}
-          </div>
+                )}
+              </DragOverlay>,
+              document.body,
+            )}
+          </DndContext>
         ) : (
           <div className="list-empty">
             <span className="empty-illustration">
@@ -427,6 +358,18 @@ export function RulesPage({
           onSave={(input) => upsertDraftRule(input, editingRule)}
         />
       )}
+      <RuleAssistant
+        rules={visibleRules}
+        policies={policies}
+        ruleProviders={ruleProviders}
+        scope={
+          profileId
+            ? `独立规则草稿：${profileName ?? profileId}`
+            : "全局规则草稿"
+        }
+        busy={rules.isPending || saveRules.isPending || draggedRuleId !== null}
+        onApply={replaceDraftRules}
+      />
     </div>
   );
 }
@@ -440,9 +383,4 @@ function createDraftRuleId() {
     return `draft-${crypto.randomUUID()}`;
   }
   return `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function getDropPosition(event: DragEvent<HTMLElement>): DropPosition {
-  const rect = event.currentTarget.getBoundingClientRect();
-  return event.clientY < rect.top + rect.height / 2 ? "before" : "after";
 }

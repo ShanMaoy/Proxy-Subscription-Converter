@@ -27,44 +27,48 @@ export async function registerAuthRoutes(
 
   const requireAuth = createRequireAuth(config);
 
-  app.post("/api/auth/login", async (request, reply) => {
-    const credentials = loginSchema.parse(request.body);
-    const validUsername = credentials.username === config.ADMIN_USERNAME;
-    const validPassword = verifyPassword(
-      credentials.password,
-      config.ADMIN_PASSWORD!,
-    );
+  app.post(
+    "/api/auth/login",
+    { bodyLimit: 16 * 1024 },
+    async (request, reply) => {
+      const credentials = loginSchema.parse(request.body);
+      const validUsername = credentials.username === config.ADMIN_USERNAME;
+      const validPassword = verifyPassword(
+        credentials.password,
+        config.ADMIN_PASSWORD!,
+      );
 
-    if (!validUsername || !validPassword) {
-      return reply.status(401).send({
-        ok: false,
-        error: {
-          code: "INVALID_CREDENTIALS",
-          message: "Invalid username or password",
-        },
+      if (!validUsername || !validPassword) {
+        return reply.status(401).send({
+          ok: false,
+          error: {
+            code: "INVALID_CREDENTIALS",
+            message: "Invalid username or password",
+          },
+        });
+      }
+
+      const token = await createSessionToken(config, config.ADMIN_USERNAME);
+      reply.setCookie(sessionCookieName, token, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: config.NODE_ENV === "production",
+        path: "/",
+        maxAge: 60 * 60 * 12,
       });
-    }
 
-    const token = await createSessionToken(config, config.ADMIN_USERNAME);
-    reply.setCookie(sessionCookieName, token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: config.NODE_ENV === "production",
-      path: "/",
-      maxAge: 60 * 60 * 12,
-    });
-
-    return {
-      ok: true,
-      data: {
-        username: config.ADMIN_USERNAME,
-      },
-    };
-  });
+      return {
+        ok: true,
+        data: {
+          username: config.ADMIN_USERNAME,
+        },
+      };
+    },
+  );
 
   app.post(
     "/api/auth/logout",
-    { preHandler: requireAuth },
+    { onRequest: requireAuth },
     async (_request, reply) => {
       reply.clearCookie(sessionCookieName, {
         httpOnly: true,
@@ -82,7 +86,7 @@ export async function registerAuthRoutes(
     },
   );
 
-  app.get("/api/auth/me", { preHandler: requireAuth }, async (request) => ({
+  app.get("/api/auth/me", { onRequest: requireAuth }, async (request) => ({
     ok: true,
     data: {
       username: request.adminUsername,

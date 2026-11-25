@@ -8,9 +8,7 @@ import { outputProfiles } from "./schema";
 export const defaultClashProfileId = "default-clash";
 export const defaultShadowrocketProfileId = "default-shadowrocket";
 
-export function ensureDefaultOutputProfiles(database: DatabaseConnection) {
-  // Seed a fresh installation only; deleted profiles must not reappear on restart.
-  if (database.db.select().from(outputProfiles).limit(1).get()) return;
+export function seedDefaultOutputProfiles(database: DatabaseConnection) {
   const now = new Date();
   const defaults = [
     {

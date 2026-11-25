@@ -15,7 +15,7 @@ export async function registerSystemRoutes(
   logs: OperationLogService,
 ) {
   const backup = new BackupService(app.database, config);
-  const protectedRoute = { preHandler: app.requireAuth };
+  const protectedRoute = { onRequest: app.requireAuth };
 
   app.get("/api/system/logs", protectedRoute, async (request) => {
     const { limit } = logQuerySchema.parse(request.query);
@@ -36,13 +36,17 @@ export async function registerSystemRoutes(
     return { ok: true, data };
   });
 
-  app.post("/api/system/restore", protectedRoute, async (request) => {
-    const result = backup.restore(request.body);
-    logs.record({
-      action: "backup.restore",
-      message: "Configuration backup restored",
-      metadata: result,
-    });
-    return { ok: true, data: result };
-  });
+  app.post(
+    "/api/system/restore",
+    { ...protectedRoute, bodyLimit: 120 * 1024 * 1024 },
+    async (request) => {
+      const result = backup.restore(request.body);
+      logs.record({
+        action: "backup.restore",
+        message: "Configuration backup restored",
+        metadata: result,
+      });
+      return { ok: true, data: result };
+    },
+  );
 }

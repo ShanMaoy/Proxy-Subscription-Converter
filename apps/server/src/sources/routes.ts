@@ -20,14 +20,18 @@ export async function registerSourceRoutes(
     config,
     remoteFetcher,
   );
-  const protectedRoute = { preHandler: app.requireAuth };
+  const protectedRoute = { onRequest: app.requireAuth };
+  const sourceImportRoute = {
+    ...protectedRoute,
+    bodyLimit: 120 * 1024 * 1024,
+  };
 
   app.get("/api/sources", protectedRoute, async () => ({
     ok: true,
     data: service.list(),
   }));
 
-  app.post("/api/sources", protectedRoute, async (request, reply) => {
+  app.post("/api/sources", sourceImportRoute, async (request, reply) => {
     const source = service.create(request.body);
     logs?.record({
       action: "source.create",
@@ -49,7 +53,7 @@ export async function registerSourceRoutes(
     return { ok: true, data: source };
   });
 
-  app.patch("/api/sources/:id", protectedRoute, async (request, reply) => {
+  app.patch("/api/sources/:id", sourceImportRoute, async (request, reply) => {
     const { id } = idParamsSchema.parse(request.params);
     const source = service.update(id, request.body);
     if (!source) {

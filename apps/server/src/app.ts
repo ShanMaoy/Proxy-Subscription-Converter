@@ -4,11 +4,12 @@ import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyServerOptions } from "fastify";
 import { resolve } from "node:path";
 
+import { GeoDatasets } from "./assistant/geo-datasets";
+import { registerAssistantRoutes } from "./assistant/routes";
 import { registerAuthRoutes } from "./auth/routes";
 import type { AppConfig } from "./config/env";
 import { loadConfig } from "./config/env";
 import { initializeDatabase, type DatabaseConnection } from "./db/database";
-import { ensureDefaultOutputProfiles } from "./db/defaults";
 import { registerErrorHandler } from "./http/errors";
 import { registerOutputRoutes } from "./output/routes";
 import { registerHealthRoutes } from "./routes/health";
@@ -29,8 +30,6 @@ export type CreateAppOptions = {
   enableSourceScheduler?: boolean;
 };
 
-export const maxRequestBodyBytes = 120 * 1024 * 1024;
-
 export async function createApp(options: CreateAppOptions = {}) {
   const config = options.config ?? loadConfig();
   const configuredLogger =
@@ -48,30 +47,29 @@ export async function createApp(options: CreateAppOptions = {}) {
           ...(typeof configuredLogger === "object" ? configuredLogger : {}),
           redact: {
             paths: [
+              "req.url",
               "req.headers.authorization",
               "req.headers.cookie",
               "res.headers.set-cookie",
               "*.password",
               "*.token",
               "*.url",
+              "*.apiKey",
             ],
             censor: "[REDACTED]",
           },
         };
   const app = Fastify({
     logger,
-    bodyLimit: maxRequestBodyBytes,
+    bodyLimit: 8 * 1024 * 1024,
     trustProxy: config.TRUST_PROXY_HOPS || false,
   });
   let sourceScheduler: SourceRefreshScheduler | undefined;
+  let geoDatasets: GeoDatasets | undefined;
   const database =
     options.enableDatabase === false
       ? undefined
       : (options.database ?? initializeDatabase(config.DATABASE_URL));
-  if (database) {
-    ensureDefaultOutputProfiles(database);
-  }
-
   registerErrorHandler(app);
   await app.register(cors, {
     origin: config.WEB_ORIGIN,
@@ -104,6 +102,11 @@ export async function createApp(options: CreateAppOptions = {}) {
     await registerRuleRoutes(app, operationLogs);
     await registerOutputRoutes(app, config, operationLogs);
     await registerSystemRoutes(app, config, operationLogs);
+    geoDatasets = new GeoDatasets(database);
+    registerAssistantRoutes(app, config, geoDatasets);
+    if (config.NODE_ENV !== "test") {
+      app.addHook("onReady", async () => geoDatasets?.start());
+    }
   }
 
   if (config.STATIC_ROOT) {
@@ -141,7 +144,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   if (database) {
     app.addHook("onClose", async () => {
-      await sourceScheduler?.stop();
+      await Promise.all([sourceScheduler?.stop(), geoDatasets?.stop()]);
       database.close();
     });
   }

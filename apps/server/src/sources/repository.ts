@@ -37,6 +37,14 @@ export class SourceRepository {
       .get();
   }
 
+  setLocalProxiesCount(id: string, count: number) {
+    this.database.db
+      .update(subscriptionSources)
+      .set({ localProxiesCount: count })
+      .where(eq(subscriptionSources.id, id))
+      .run();
+  }
+
   create(source: SourceInsert) {
     this.database.db.insert(subscriptionSources).values(source).run();
     return this.findById(source.id)!;

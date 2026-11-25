@@ -73,6 +73,10 @@ export class SourceService {
         : null,
       urlMasked: remoteUrl ? maskSensitiveUrl(remoteUrl) : null,
       rawContent: source.type === "remote_url" ? null : source.rawContent!,
+      localProxiesCount:
+        source.type === "remote_url"
+          ? null
+          : parseSubscriptionContent(source.rawContent!).proxies.length,
       enabled: source.enabled,
       refreshIntervalMinutes:
         source.type === "remote_url" ? source.refreshIntervalMinutes : null,
@@ -127,6 +131,9 @@ export class SourceService {
         );
       }
       changes.rawContent = parsed.rawContent;
+      changes.localProxiesCount = parseSubscriptionContent(
+        parsed.rawContent,
+      ).proxies.length;
     }
 
     const updated = this.repository.update(id, changes);
@@ -188,8 +195,6 @@ export class SourceService {
       const content = typeof fetched === "string" ? fetched : fetched.content;
       const subscriptionUserInfo =
         typeof fetched === "string" ? null : fetched.subscriptionUserInfo;
-      const contentHash = createHash("sha256").update(content).digest("hex");
-      const proxiesCount = parseSubscriptionContent(content).proxies.length;
       const current = this.repository.findById(id);
       if (!current) return undefined;
       if (
@@ -201,6 +206,13 @@ export class SourceService {
           { statusCode: 409 },
         );
       }
+      const proxiesCount = parseSubscriptionContent(content).proxies.length;
+      if (proxiesCount === 0) {
+        throw new SourceValidationError(
+          "Remote subscription contains no valid nodes",
+        );
+      }
+      const contentHash = createHash("sha256").update(content).digest("hex");
       const { cache, source: updated } = this.repository.saveRefresh(
         {
           id: nanoid(),
@@ -263,7 +275,22 @@ export class SourceService {
   }
 
   private toResponse(source: StoredSource, includeRawContent = false) {
-    const cache = this.repository.findLatestCache(source.id);
+    const remote = source.type === "remote_url";
+    const cache = remote
+      ? this.repository.findLatestCache(source.id)
+      : undefined;
+    let proxiesCount = remote
+      ? (cache?.proxiesCount ?? null)
+      : source.localProxiesCount;
+    if (!remote && proxiesCount === null && source.rawContent) {
+      try {
+        proxiesCount = parseSubscriptionContent(source.rawContent).proxies
+          .length;
+        this.repository.setLocalProxiesCount(source.id, proxiesCount);
+      } catch {
+        // Existing backups can contain local files that predate validation.
+      }
+    }
     const nextRefreshAt =
       source.type === "remote_url" &&
       source.enabled &&
@@ -293,7 +320,7 @@ export class SourceService {
       lastFetchedAt: source.lastFetchedAt?.toISOString() ?? null,
       lastFetchStatus: source.lastFetchStatus,
       lastError: source.lastError,
-      proxiesCount: cache?.proxiesCount ?? null,
+      proxiesCount,
       createdAt: source.createdAt.toISOString(),
       updatedAt: source.updatedAt.toISOString(),
     };

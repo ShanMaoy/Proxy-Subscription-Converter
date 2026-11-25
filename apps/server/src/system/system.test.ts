@@ -36,6 +36,38 @@ afterEach(async () => {
 });
 
 describe("system maintenance", () => {
+  it("authenticates configuration imports before parsing JSON", async () => {
+    const { app, cookies } = await createAuthenticatedApp(
+      testConfig("early-authentication-test-secret-longer-than-32"),
+    );
+    const request = {
+      method: "POST" as const,
+      url: "/api/system/restore",
+      headers: { "content-type": "application/json" },
+      payload: "{",
+    };
+    expect((await app.inject(request)).statusCode).toBe(401);
+    expect((await app.inject({ ...request, cookies })).statusCode).toBe(400);
+  });
+
+  it("round-trips an empty output list without creating defaults", async () => {
+    const { app, cookies } = await createAuthenticatedApp(
+      testConfig("empty-output-backup-test-secret-longer-than-32"),
+    );
+    const backup = (
+      await app.inject({ url: "/api/system/backup", cookies })
+    ).json().data;
+    const restore = await app.inject({
+      method: "POST",
+      url: "/api/system/restore",
+      cookies,
+      payload: { ...backup, outputProfiles: [] },
+    });
+    expect(restore.statusCode).toBe(200);
+    const exported = await app.inject({ url: "/api/system/backup", cookies });
+    expect(exported.json().data.outputProfiles).toEqual([]);
+  });
+
   it("rejects invalid MATCH ordering in backups before deleting any data", async () => {
     const { app, cookies } = await createAuthenticatedApp(
       testConfig("backup-rule-validation-secret-longer-than-32"),

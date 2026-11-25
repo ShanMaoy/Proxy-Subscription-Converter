@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -88,6 +88,12 @@ describe("database initialization", () => {
 
   it("adds source metadata columns to an existing database", () => {
     const connection = createDatabase(":memory:");
+    connection.sqlite.exec(
+      readFileSync(
+        new URL("./migrations/0000_initial.sql", import.meta.url),
+        "utf8",
+      ),
+    );
     connection.sqlite.exec(`
       CREATE TABLE __migrations (
         id TEXT PRIMARY KEY NOT NULL,
@@ -95,17 +101,8 @@ describe("database initialization", () => {
       );
       INSERT INTO __migrations (id, applied_at)
       VALUES ('0000_initial', 0);
-      CREATE TABLE rules (id TEXT PRIMARY KEY, rule_type TEXT NOT NULL);
-      INSERT INTO rules(id,rule_type) VALUES ('old-rule', 'DOMAIN');
-      CREATE TABLE subscription_sources (
-        id TEXT PRIMARY KEY NOT NULL,
-        name TEXT NOT NULL,
-        type TEXT NOT NULL,
-        enabled INTEGER DEFAULT 1 NOT NULL,
-        last_fetch_status TEXT DEFAULT 'never' NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
+      INSERT INTO rules(id, rule_type, policy, sort_order, created_at, updated_at)
+      VALUES ('old-rule', 'DOMAIN', 'DIRECT', 0, 0, 0);
     `);
 
     runMigrations(connection);
@@ -124,6 +121,33 @@ describe("database initialization", () => {
         .prepare("SELECT no_resolve FROM rules WHERE id = ?")
         .get("old-rule"),
     ).toEqual({ no_resolve: 0 });
+    expect(
+      connection.sqlite.prepare("SELECT id FROM output_profiles").all(),
+    ).toEqual([]);
     connection.close();
+  });
+
+  it("seeds fresh databases once and preserves an empty output list across restart", () => {
+    const directory = mkdtempSync(join(tmpdir(), "subscription-converter-"));
+    temporaryDirectories.push(directory);
+    const databasePath = join(directory, "app.sqlite");
+    const fresh = initializeDatabase(databasePath);
+    try {
+      expect(
+        fresh.sqlite.prepare("SELECT id FROM output_profiles").all(),
+      ).toHaveLength(2);
+      fresh.sqlite.exec("DELETE FROM output_profiles");
+    } finally {
+      fresh.close();
+    }
+
+    const restarted = initializeDatabase(databasePath);
+    try {
+      expect(
+        restarted.sqlite.prepare("SELECT id FROM output_profiles").all(),
+      ).toEqual([]);
+    } finally {
+      restarted.close();
+    }
   });
 });

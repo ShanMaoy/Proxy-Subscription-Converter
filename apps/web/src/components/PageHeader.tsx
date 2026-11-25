@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { GlassLayer } from "./GlassLayer";
 
 export function PageHeader({
   title,
@@ -11,6 +12,7 @@ export function PageHeader({
 }) {
   return (
     <header className="page-header">
+      <GlassLayer />
       <div>
         <h1>{title}</h1>
         <p>{description}</p>

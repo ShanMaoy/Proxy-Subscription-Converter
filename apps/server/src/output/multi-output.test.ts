@@ -1,13 +1,15 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
 import { createApp } from "../app";
 import { loadConfig } from "../config/env";
 import { sessionCookieName } from "../auth/session";
-import { ensureDefaultOutputProfiles } from "../db/defaults";
+import { runMigrations } from "../db/database";
 import { AccessLogService } from "./access-log-service";
+import { OutputService } from "./service";
 
 const apps: Awaited<ReturnType<typeof createApp>>[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
 async function setup(trustProxy = "0") {
@@ -67,6 +69,49 @@ const endpoint = (id: string, suffix = "") =>
   `/api/output/profiles/${id}${suffix}`;
 
 describe("independent output profiles", () => {
+  it("reuses public downloads and invalidates them when rules, sources or output options change", async () => {
+    const { app, api, create, source } = await setup();
+    const original = await source("Alpha");
+    const profile = await create("Cached");
+    const download = () => app.inject(path(profile));
+    const generate = vi.spyOn(OutputService.prototype, "generate");
+
+    const first = await download();
+    expect(first.statusCode).toBe(200);
+    expect((await download()).body).toBe(first.body);
+    expect(generate).toHaveBeenCalledTimes(1);
+
+    expect(
+      (
+        await api("POST", "/api/rules", {
+          ruleType: "DOMAIN",
+          value: "changed.example",
+          policy: "DIRECT",
+        })
+      ).statusCode,
+    ).toBe(201);
+    expect((await download()).body).toContain("DOMAIN,changed.example,DIRECT");
+
+    expect(
+      (
+        await api("PATCH", `/api/sources/${original.id}`, {
+          enabled: false,
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(parse((await download()).body).proxies).toEqual([]);
+
+    expect(
+      (
+        await api("PATCH", endpoint(profile.id), {
+          options: { matchPolicy: "REJECT" },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect((await download()).body).toContain("MATCH,REJECT");
+    expect(generate).toHaveBeenCalledTimes(4);
+  });
+
   it("isolates sources and rules across YAML, Base64 and Shadowrocket outputs", async () => {
     const { app, api, create, source } = await setup();
     const a = await source("Alpha");
@@ -245,7 +290,7 @@ describe("independent output profiles", () => {
     expect((await app.inject(path(reset))).statusCode).toBe(200);
     await api("DELETE", endpoint("default-clash"));
     await api("DELETE", endpoint("default-shadowrocket"));
-    ensureDefaultOutputProfiles(app.database);
+    runMigrations(app.database);
     expect((await api("GET", "/api/output/profiles")).json().data).toHaveLength(
       1,
     );

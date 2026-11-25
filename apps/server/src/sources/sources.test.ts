@@ -32,6 +32,31 @@ async function createAuthenticatedApp() {
 }
 
 describe("subscription source CRUD", () => {
+  it("counts uploaded YAML nodes immediately without a remote refresh", async () => {
+    const { app, cookies } = await createAuthenticatedApp();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/sources",
+      cookies,
+      payload: {
+        name: "Local file",
+        type: "uploaded_yaml",
+        rawContent:
+          "proxies: [{name: Local, type: ss, server: example.com, port: 443, cipher: aes-128-gcm, password: fixture}]",
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json().data).toMatchObject({
+      proxiesCount: 1,
+      lastFetchedAt: null,
+      refreshIntervalMinutes: null,
+    });
+    expect(
+      (await app.inject({ url: "/api/sources", cookies })).json().data[0]
+        .proxiesCount,
+    ).toBe(1);
+  });
+
   it("creates remote and pasted sources without exposing the remote token", async () => {
     const { app, cookies } = await createAuthenticatedApp();
     const remote = await app.inject({

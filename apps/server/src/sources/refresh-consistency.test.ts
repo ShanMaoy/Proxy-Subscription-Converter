@@ -7,6 +7,8 @@ import { SourceService } from "./service";
 import { deferred } from "../test/deferred";
 
 const databases: ReturnType<typeof initializeDatabase>[] = [];
+const subscription =
+  "proxies: [{name: Test, type: ss, server: example.com, port: 443, cipher: aes-128-gcm, password: fixture}]";
 afterEach(() => databases.splice(0).forEach((database) => database.close()));
 
 function setup(fetcher: RemoteFetcher) {
@@ -35,12 +37,12 @@ describe("remote refresh consistency", () => {
     const fetcher = vi
       .fn()
       .mockReturnValueOnce(pending.promise)
-      .mockResolvedValue("proxies: []\n# second");
+      .mockResolvedValue(`${subscription}\n# second`);
     const { service, source, database, repository } = setup(fetcher);
     const first = service.refresh(source.id);
     const second = service.refresh(source.id);
     expect(fetcher).toHaveBeenCalledTimes(1);
-    pending.resolve("proxies: []\n# first");
+    pending.resolve(`${subscription}\n# first`);
     await Promise.all([first, second]);
     await service.refresh(source.id);
     expect(repository.findLatestCache(source.id)?.content).toContain("second");
@@ -55,13 +57,13 @@ describe("remote refresh consistency", () => {
     const pending = deferred<string>();
     const fetcher = vi
       .fn()
-      .mockResolvedValueOnce("proxies: []")
+      .mockResolvedValueOnce(subscription)
       .mockReturnValueOnce(pending.promise);
     const { service, source, repository } = setup(fetcher);
     await service.refresh(source.id);
     const refresh = service.refresh(source.id);
     service.update(source.id, { url: "https://example.com/new" });
-    pending.resolve("proxies: []\n# stale");
+    pending.resolve(subscription);
     await expect(refresh).rejects.toThrow(/Source changed/);
     expect(repository.findLatestCache(source.id)).toBeUndefined();
     expect(service.get(source.id)?.lastFetchStatus).toBe("never");
@@ -72,7 +74,7 @@ describe("remote refresh consistency", () => {
     const { service, source, repository } = setup(() => pending.promise);
     const refresh = service.refresh(source.id);
     service.delete(source.id);
-    pending.resolve("proxies: []");
+    pending.resolve(subscription);
     expect(await refresh).toBeUndefined();
     expect(repository.findLatestCache(source.id)).toBeUndefined();
   });
@@ -80,19 +82,38 @@ describe("remote refresh consistency", () => {
   it("keeps the previous cache when a new response cannot be parsed", async () => {
     const fetcher = vi
       .fn()
-      .mockResolvedValueOnce("proxies: []")
+      .mockResolvedValueOnce(subscription)
       .mockResolvedValueOnce("password: [sensitive-value");
     const { service, source, repository } = setup(fetcher);
     await service.refresh(source.id);
     await expect(service.refresh(source.id)).rejects.toThrow(/Invalid YAML/);
-    expect(repository.findLatestCache(source.id)?.content).toBe("proxies: []");
+    expect(repository.findLatestCache(source.id)?.content).toBe(subscription);
     expect(service.get(source.id)?.lastFetchStatus).toBe("failed");
     expect(service.get(source.id)?.lastError).not.toContain("sensitive-value");
   });
 
+  it.each(["message: temporarily unavailable", "proxies: []"])(
+    "keeps the previous cache for valid YAML with no nodes (%s)",
+    async (emptyResponse) => {
+      const fetcher = vi
+        .fn()
+        .mockResolvedValueOnce(subscription)
+        .mockResolvedValueOnce(emptyResponse);
+      const { service, source, repository } = setup(fetcher);
+      await service.refresh(source.id);
+      const previous = repository.findLatestCache(source.id);
+
+      await expect(service.refresh(source.id)).rejects.toThrow(
+        /no valid nodes/,
+      );
+      expect(repository.findLatestCache(source.id)).toEqual(previous);
+      expect(service.get(source.id)?.lastFetchStatus).toBe("failed");
+    },
+  );
+
   it("rolls back cache replacement if writing source metadata fails", async () => {
     const { service, source, database, repository } = setup(
-      async () => "proxies: []",
+      async () => subscription,
     );
     await service.refresh(source.id);
     const oldCache = repository.findLatestCache(source.id)!;

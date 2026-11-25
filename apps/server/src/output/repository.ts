@@ -11,6 +11,18 @@ import {
 export class OutputRepository {
   constructor(private readonly database: DatabaseConnection) {}
 
+  readOutputSnapshot<T>(read: (version: number) => T) {
+    return this.database.sqlite.transaction(() => {
+      const { version } = this.database.sqlite
+        .prepare<
+          [],
+          { version: number }
+        >("SELECT version FROM output_revision WHERE id = 1")
+        .get()!;
+      return read(version);
+    })();
+  }
+
   findProfile(id: string) {
     return this.database.db
       .select()

@@ -1,5 +1,6 @@
 import { ArrowUpRight, LogOut, Menu, ShieldCheck, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { GlassLayer } from "./GlassLayer";
 
 export type PageId = "dashboard" | "sources" | "rules" | "output" | "system";
 const navigation: { id: PageId; label: string }[] = [
@@ -50,6 +51,7 @@ export function AppShell({
           }
         }}
       >
+        <GlassLayer />
         <div className="global-nav-inner">
           <button
             className="brand-button"

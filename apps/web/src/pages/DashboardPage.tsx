@@ -132,15 +132,17 @@ export function DashboardPage({
                     </span>
                   </div>
                   <span
-                    className={`status-badge ${source.enabled ? source.lastFetchStatus : ""}`}
+                    className={`status-badge ${source.enabled && source.type === "remote_url" ? source.lastFetchStatus : ""}`}
                   >
                     {!source.enabled
                       ? "已停用"
-                      : source.lastFetchStatus === "success"
-                        ? "正常"
-                        : source.lastFetchStatus === "failed"
-                          ? "刷新失败"
-                          : "未刷新"}
+                      : source.type !== "remote_url"
+                        ? "已导入"
+                        : source.lastFetchStatus === "success"
+                          ? "正常"
+                          : source.lastFetchStatus === "failed"
+                            ? "刷新失败"
+                            : "未刷新"}
                   </span>
                 </li>
               ))}

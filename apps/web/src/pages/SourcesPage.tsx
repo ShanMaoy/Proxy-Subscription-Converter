@@ -43,9 +43,11 @@ export function SourcesPage() {
     queryFn: () => apiRequest<SubscriptionSource[]>("/api/sources"),
   });
   const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["sources"] });
-  void queryClient.invalidateQueries({ queryKey: ["output", "availability"] });
-  void queryClient.invalidateQueries({ queryKey: ["output", "preview"] });
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["sources"] }),
+      queryClient.invalidateQueries({ queryKey: ["output", "availability"] }),
+      queryClient.invalidateQueries({ queryKey: ["output", "preview"] }),
+    ]);
   const toggle = useMutation({
     mutationFn: (source: SubscriptionSource) =>
       apiRequest<SubscriptionSource>(`/api/sources/${source.id}`, {
@@ -155,19 +157,23 @@ export function SourcesPage() {
                 </div>
                 <div data-label="状态">
                   <span
-                    className={`status-badge ${source.lastFetchStatus}`}
+                    className={`status-badge ${source.type === "remote_url" ? source.lastFetchStatus : ""}`}
                     title={source.lastError ?? undefined}
                   >
-                    {source.lastFetchStatus === "success" ? (
+                    {source.type !==
+                    "remote_url" ? null : source.lastFetchStatus ===
+                      "success" ? (
                       <CheckCircle2 size={13} />
                     ) : source.lastFetchStatus === "failed" ? (
                       <AlertTriangle size={13} />
                     ) : null}
-                    {source.lastFetchStatus === "success"
-                      ? "正常"
-                      : source.lastFetchStatus === "failed"
-                        ? "失败"
-                        : "未刷新"}
+                    {source.type !== "remote_url"
+                      ? "不适用"
+                      : source.lastFetchStatus === "success"
+                        ? "正常"
+                        : source.lastFetchStatus === "failed"
+                          ? "失败"
+                          : "未刷新"}
                   </span>
                   {source.lastError && (
                     <small className="row-error">{source.lastError}</small>
@@ -177,9 +183,11 @@ export function SourcesPage() {
                   {source.proxiesCount === null ? "—" : source.proxiesCount}
                 </span>
                 <span data-label="最近刷新" className="muted-cell">
-                  {source.lastFetchedAt
-                    ? formatDate(source.lastFetchedAt)
-                    : "尚未刷新"}
+                  {source.type !== "remote_url"
+                    ? "不适用"
+                    : source.lastFetchedAt
+                      ? formatDate(source.lastFetchedAt)
+                      : "尚未刷新"}
                 </span>
                 <div className="refresh-schedule" data-label="自动更新">
                   {source.type === "remote_url" ? (
@@ -212,7 +220,11 @@ export function SourcesPage() {
                   )}
                 </div>
                 <div className="traffic-info" data-label="流量/到期">
-                  <TrafficSummary source={source} />
+                  {source.type === "remote_url" ? (
+                    <TrafficSummary source={source} />
+                  ) : (
+                    <span className="muted-cell">不适用</span>
+                  )}
                 </div>
                 <div className="row-actions" data-label="操作">
                   {source.type === "remote_url" && (

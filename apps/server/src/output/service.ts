@@ -100,14 +100,6 @@ export class OutputService {
     return { profile, ...result };
   }
 
-  generateByToken(token: string, targetClient: "clash") {
-    const profile = this.repository.findProfileByToken(token);
-    if (!profile || profile.targetClient !== targetClient || !profile.enabled) {
-      return undefined;
-    }
-    return this.generate(profile.id);
-  }
-
   generateShadowrocket(profileId: string, allowDisabled = false) {
     const profile = this.repository.findProfile(profileId);
     if (
@@ -129,21 +121,13 @@ export class OutputService {
     };
   }
 
-  generateShadowrocketByToken(token: string) {
-    const profile = this.repository.findProfileByToken(token);
+  generateBase64(profileId: string, allowDisabled = false) {
+    const profile = this.repository.findProfile(profileId);
     if (
       !profile ||
-      profile.targetClient !== "shadowrocket" ||
-      !profile.enabled
+      profile.targetClient !== "clash" ||
+      (!allowDisabled && !profile.enabled)
     ) {
-      return undefined;
-    }
-    return this.generateShadowrocket(profile.id);
-  }
-
-  generateBase64ByToken(token: string) {
-    const profile = this.repository.findProfileByToken(token);
-    if (!profile || profile.targetClient !== "clash" || !profile.enabled) {
       return undefined;
     }
     const options = outputProfileOptionsSchema.parse(
@@ -182,10 +166,7 @@ export class OutputService {
       };
     }
     if (options.subscriptionFilename?.toLowerCase().endsWith(".txt")) {
-      const result = generateBase64Subscription({
-        sources: this.getSources(options),
-        nodeFilter: options.nodeFilter,
-      });
+      const result = this.generateBase64(profileId, true)!;
       return {
         content: result.content,
         format: "txt" as const,

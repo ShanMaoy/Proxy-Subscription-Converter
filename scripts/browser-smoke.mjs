@@ -270,12 +270,9 @@ try {
   const initialTwoRuleRow = page
     .locator(".rule-row")
     .filter({ has: page.getByText("two.example.com", { exact: true }) });
-  const initialExampleRuleRow = page
-    .locator(".rule-row")
-    .filter({ has: page.getByText("example.com", { exact: true }) });
-  await initialTwoRuleRow.dragTo(initialExampleRuleRow, {
-    targetPosition: { x: 12, y: 4 },
-  });
+  const firstHandle = initialTwoRuleRow.locator(".rule-drag-handle");
+  await firstHandle.focus();
+  await page.keyboard.press("ArrowUp");
   await page.waitForFunction(
     () =>
       document.querySelector(".rule-value strong")?.textContent ===
@@ -286,12 +283,9 @@ try {
   const exampleRuleRow = page
     .locator(".rule-row")
     .filter({ has: page.getByText("example.com", { exact: true }) });
-  const twoRuleRow = page
-    .locator(".rule-row")
-    .filter({ has: page.getByText("two.example.com", { exact: true }) });
-  await exampleRuleRow.dragTo(twoRuleRow, {
-    targetPosition: { x: 12, y: 4 },
-  });
+  const secondHandle = exampleRuleRow.locator(".rule-drag-handle");
+  await secondHandle.focus();
+  await page.keyboard.press("ArrowUp");
   await page.waitForFunction(
     () =>
       document.querySelector(".rule-value strong")?.textContent ===

@@ -32,7 +32,7 @@ export async function registerProfileRoutes(
   const output = new OutputService(repository);
   const access = new AccessLogService(app.database);
   const availability = new OutputAvailabilityService(repository);
-  const auth = { preHandler: app.requireAuth };
+  const auth = { onRequest: app.requireAuth };
   app.get(
     "/api/output/profiles/:profileId/availability",
     auth,

@@ -6,6 +6,7 @@ import BetterSqlite3 from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 
 import { databaseSchema } from "./schema";
+import { seedDefaultOutputProfiles } from "./defaults";
 
 const migrations = [
   {
@@ -41,6 +42,18 @@ const migrations = [
       new URL("./migrations/0004_rule_no_resolve.sql", import.meta.url),
     ),
   },
+  {
+    id: "0005_output_revision",
+    path: fileURLToPath(
+      new URL("./migrations/0005_output_revision.sql", import.meta.url),
+    ),
+  },
+  {
+    id: "0006_ai_and_source_metadata",
+    path: fileURLToPath(
+      new URL("./migrations/0006_ai_and_source_metadata.sql", import.meta.url),
+    ),
+  },
 ] as const;
 
 export type DatabaseConnection = ReturnType<typeof createDatabase>;
@@ -70,27 +83,30 @@ export function createDatabase(databaseUrl: string) {
 }
 
 export function runMigrations(connection: DatabaseConnection) {
-  connection.sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS __migrations (
-      id TEXT PRIMARY KEY NOT NULL,
-      applied_at INTEGER NOT NULL
-    );
-  `);
-
-  for (const migration of migrations) {
-    const applied = connection.sqlite
-      .prepare("SELECT id FROM __migrations WHERE id = ?")
-      .get(migration.id);
-    if (applied) continue;
-
-    const sql = readFileSync(migration.path, "utf8");
-    connection.sqlite.transaction(() => {
-      connection.sqlite.exec(sql);
-      connection.sqlite
-        .prepare("INSERT INTO __migrations (id, applied_at) VALUES (?, ?)")
-        .run(migration.id, Date.now());
-    })();
-  }
+  connection.sqlite
+    .transaction(() => {
+      connection.sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS __migrations (
+        id TEXT PRIMARY KEY NOT NULL,
+        applied_at INTEGER NOT NULL
+      );
+    `);
+      const list = connection.sqlite.prepare<[], { id: string }>(
+        "SELECT id FROM __migrations",
+      );
+      const applied = new Set(list.all().map(({ id }) => id));
+      const freshDatabase = !applied.has(migrations[0].id);
+      const record = connection.sqlite.prepare(
+        "INSERT INTO __migrations (id, applied_at) VALUES (?, ?)",
+      );
+      for (const migration of migrations) {
+        if (applied.has(migration.id)) continue;
+        connection.sqlite.exec(readFileSync(migration.path, "utf8"));
+        record.run(migration.id, Date.now());
+      }
+      if (freshDatabase) seedDefaultOutputProfiles(connection);
+    })
+    .immediate();
 }
 
 export function initializeDatabase(databaseUrl: string) {

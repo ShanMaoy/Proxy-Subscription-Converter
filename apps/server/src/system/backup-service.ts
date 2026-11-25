@@ -8,7 +8,6 @@ import {
 
 import type { AppConfig } from "../config/env";
 import type { DatabaseConnection } from "../db/database";
-import { ensureDefaultOutputProfiles } from "../db/defaults";
 import { validateRuleSet } from "../rules/service";
 import {
   outputProfiles,
@@ -115,7 +114,7 @@ export const configurationBackupSchema = z.object({
   settings: z.array(settingSchema),
   sources: z.array(backupSourceSchema),
   rules: z.array(userRuleSchema),
-  outputProfiles: z.array(outputProfileSchema).min(1),
+  outputProfiles: z.array(outputProfileSchema),
 });
 
 export type ConfigurationBackup = z.infer<typeof configurationBackupSchema>;
@@ -264,22 +263,23 @@ export class BackupService {
           )
           .run();
       }
-      this.database.db
-        .insert(outputProfiles)
-        .values(
-          backup.outputProfiles.map((profile) => ({
-            id: profile.id,
-            name: profile.name,
-            targetClient: profile.targetClient,
-            token: profile.token,
-            enabled: profile.enabled,
-            optionsJson: JSON.stringify(profile.options),
-            createdAt: new Date(profile.createdAt),
-            updatedAt: new Date(profile.updatedAt),
-          })),
-        )
-        .run();
-      ensureDefaultOutputProfiles(this.database);
+      if (backup.outputProfiles.length > 0) {
+        this.database.db
+          .insert(outputProfiles)
+          .values(
+            backup.outputProfiles.map((profile) => ({
+              id: profile.id,
+              name: profile.name,
+              targetClient: profile.targetClient,
+              token: profile.token,
+              enabled: profile.enabled,
+              optionsJson: JSON.stringify(profile.options),
+              createdAt: new Date(profile.createdAt),
+              updatedAt: new Date(profile.updatedAt),
+            })),
+          )
+          .run();
+      }
     });
 
     replaceConfiguration();

@@ -23,9 +23,12 @@ describe("server foundation", () => {
       },
     });
     const app = await createApp({
-      config: loadConfig({ NODE_ENV: "test" }),
-      enableAuth: false,
-      enableDatabase: false,
+      config: loadConfig({
+        NODE_ENV: "test",
+        DATABASE_URL: ":memory:",
+        ADMIN_PASSWORD: "test-password",
+        SESSION_SECRET: "request-log-test-secret-at-least-32-characters",
+      }),
       logger: { stream },
     });
     apps.push(app);
@@ -35,11 +38,12 @@ describe("server foundation", () => {
       );
     });
     await app.inject({ url: "/sub/public-token-secret/invalid/route" });
+    await app.inject({ url: "/sub/matched-token-secret/clash.yaml" });
     await app.inject({ url: "/failure" });
     const output = messages.join("");
     expect(output).toContain("Request failed");
     expect(output).not.toMatch(
-      /public-token-secret|private-secret|query-secret/,
+      /public-token-secret|matched-token-secret|private-secret|query-secret/,
     );
   });
 

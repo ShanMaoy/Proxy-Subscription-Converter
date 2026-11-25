@@ -1,5 +1,6 @@
 import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
+import { GlassLayer } from "../components/GlassLayer";
 
 export function LoginPage({
   error,
@@ -32,6 +33,7 @@ export function LoginPage({
       <main className="login-main">
         <section className="login-panel">
           <form className="login-card" onSubmit={submit}>
+            <GlassLayer />
             <div>
               <h2>登录控制台</h2>
               <p>使用管理员账号登录。</p>

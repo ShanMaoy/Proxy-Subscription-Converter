@@ -14,7 +14,7 @@ export async function registerRuleRoutes(
   logs?: OperationLogService,
 ) {
   const service = new RuleService(new RuleRepository(app.database));
-  const protectedRoute = { preHandler: app.requireAuth };
+  const protectedRoute = { onRequest: app.requireAuth };
 
   app.get("/api/rules", protectedRoute, async () => ({
     ok: true,

@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { AccessLogService } from "./access-log-service";
 import { registerProfileRoutes } from "./profile-routes";
+import { PublicOutput } from "./public-output";
 
 import type { AppConfig } from "../config/env";
 import type { OperationLogService } from "../system/log-service";
@@ -41,24 +42,21 @@ export async function registerOutputRoutes(
 ) {
   const repository = new OutputRepository(app.database);
   const service = new OutputService(repository);
+  const publicOutput = new PublicOutput(repository, service);
   const accessLogs = new AccessLogService(app.database);
   const publicBaseUrl =
     config.PUBLIC_BASE_URL ?? `http://${config.HOST}:${config.PORT}`;
 
-  app.get(
-    "/api/output/profiles",
-    { preHandler: app.requireAuth },
-    async () => ({
-      ok: true,
-      data: service.listProfiles(publicBaseUrl),
-    }),
-  );
+  app.get("/api/output/profiles", { onRequest: app.requireAuth }, async () => ({
+    ok: true,
+    data: service.listProfiles(publicBaseUrl),
+  }));
 
   await registerProfileRoutes(app, publicBaseUrl, logs);
 
   app.get(
     "/api/output/preview/:profileId",
-    { preHandler: app.requireAuth },
+    { onRequest: app.requireAuth },
     async (request, reply) => {
       const { profileId } = profileParamsSchema.parse(request.params);
       const result = service.generate(profileId);
@@ -78,7 +76,7 @@ export async function registerOutputRoutes(
 
   app.post(
     "/api/output/regenerate/:profileId",
-    { preHandler: app.requireAuth },
+    { onRequest: app.requireAuth },
     async (request, reply) => {
       const { profileId } = profileParamsSchema.parse(request.params);
       const result = service.generate(profileId);
@@ -94,7 +92,7 @@ export async function registerOutputRoutes(
 
   app.get(
     "/api/output/shadowrocket/:profileId/preview",
-    { preHandler: app.requireAuth },
+    { onRequest: app.requireAuth },
     async (request, reply) => {
       const { profileId } = profileParamsSchema.parse(request.params);
       const result = service.generateShadowrocket(profileId);
@@ -117,7 +115,7 @@ export async function registerOutputRoutes(
 
   app.post(
     "/api/output/:profileId/reset-token",
-    { preHandler: app.requireAuth },
+    { onRequest: app.requireAuth },
     async (request, reply) => {
       const { profileId } = profileParamsSchema.parse(request.params);
       const profile = service.resetToken(profileId);
@@ -181,59 +179,32 @@ export async function registerOutputRoutes(
       const safeFilename = filename.replace(/["\\\r\n]/g, "_");
       const extension = safeFilename.toLowerCase().match(/\.([^.]+)$/)?.[1];
 
-      if (extension === "yaml" || extension === "yml") {
-        const result = service.generateByToken(token, "clash");
-        if (!result) {
-          return reply.status(404).send({
-            ok: false,
-            error: { code: "NOT_FOUND", message: "Subscription not found" },
-          });
-        }
-
-        return reply
-          .type("text/yaml; charset=utf-8")
-          .header("content-disposition", contentDisposition(safeFilename))
-          .send(result.yaml);
+      const format = extension === "yml" ? "yaml" : extension;
+      if (format !== "yaml" && format !== "conf" && format !== "txt") {
+        return reply.status(404).send({
+          ok: false,
+          error: {
+            code: "UNSUPPORTED_SUBSCRIPTION_FILENAME",
+            message:
+              "Subscription filename must end with .yaml, .yml, .conf or .txt",
+          },
+        });
       }
-
-      if (extension === "conf") {
-        const result = service.generateShadowrocketByToken(token);
-        if (!result) {
-          return reply.status(404).send({
-            ok: false,
-            error: { code: "NOT_FOUND", message: "Subscription not found" },
-          });
-        }
-
-        return reply
-          .type("text/plain; charset=utf-8")
-          .header("content-disposition", contentDisposition(safeFilename))
-          .send(result.content);
+      const content = publicOutput.download(token, format);
+      if (content === undefined) {
+        return reply.status(404).send({
+          ok: false,
+          error: { code: "NOT_FOUND", message: "Subscription not found" },
+        });
       }
-
-      if (extension === "txt") {
-        const result = service.generateBase64ByToken(token);
-        if (!result) {
-          return reply.status(404).send({
-            ok: false,
-            error: { code: "NOT_FOUND", message: "Subscription not found" },
-          });
-        }
-
-        return reply
-          .type("text/plain; charset=utf-8")
-          .header("content-disposition", contentDisposition(safeFilename))
-          .send(result.content);
-      }
-
-      return reply.status(404).send({
-        ok: false,
-        error: {
-          code: "UNSUPPORTED_SUBSCRIPTION_FILENAME",
-          message:
-            "Subscription filename must end with .yaml, .yml, .conf or .txt",
-        },
-      });
+      return reply
+        .type(
+          format === "yaml"
+            ? "text/yaml; charset=utf-8"
+            : "text/plain; charset=utf-8",
+        )
+        .header("content-disposition", contentDisposition(safeFilename))
+        .send(content);
     },
   );
 }

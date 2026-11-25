@@ -28,6 +28,7 @@ export const subscriptionSources = sqliteTable("subscription_sources", {
   urlEncrypted: text("url_encrypted"),
   urlMasked: text("url_masked"),
   rawContent: text("raw_content"),
+  localProxiesCount: integer("local_proxies_count"),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   refreshIntervalMinutes: integer("refresh_interval_minutes"),
   trafficUpload: integer("traffic_upload"),

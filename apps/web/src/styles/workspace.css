@@ -212,12 +212,8 @@
   padding: 16px 32px;
   border-bottom: 1px solid var(--divider);
 }
-.rule-row[draggable="true"] {
-  cursor: grab;
-}
 .rule-row.dragging {
-  opacity: 0.5;
-  background: var(--blue-soft);
+  opacity: 0.3;
 }
 .rule-order {
   display: flex;
@@ -229,6 +225,45 @@
 .rule-drag-handle {
   display: inline-grid;
   place-items: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-small);
+  color: var(--muted);
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+}
+.rule-drag-handle:hover,
+.rule-drag-handle:focus-visible {
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+.rule-row.dragging .rule-drag-handle {
+  cursor: grabbing;
+}
+.rule-drag-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(100%, 540px);
+  min-height: 52px;
+  padding: 10px 14px;
+  border: 1px solid var(--glass-rim);
+  border-radius: var(--radius-small);
+  color: var(--ink);
+  background: var(--panel);
+  box-shadow: 0 12px 30px rgb(39 65 126 / 25%);
+  cursor: grabbing;
+}
+.rule-drag-preview strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .rule-type {
   width: fit-content;
@@ -258,17 +293,6 @@
   color: var(--ink);
   overflow-wrap: anywhere;
   max-width: 100%;
-}
-.rule-drop-placeholder {
-  display: grid;
-  place-items: center;
-  min-height: 40px;
-  margin: 0 24px;
-  border: 1px dashed var(--blue);
-  border-radius: var(--radius-small);
-  color: var(--blue);
-  background: var(--blue-soft);
-  font-size: 12px;
 }
 .output-link-panel {
   margin-bottom: 24px;
